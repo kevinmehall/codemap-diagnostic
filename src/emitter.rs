@@ -11,6 +11,7 @@
 use std::io::prelude::*;
 use std::io;
 use std::cmp::min;
+use std::sync::Arc;
 use std::collections::HashMap;
 use term;
 use isatty::stderr_isatty;
@@ -48,8 +49,8 @@ impl<'a> Emitter for EmitterWriter<'a> {
     }
 }
 
-struct FileWithAnnotatedLines<'a> {
-    file: &'a File,
+struct FileWithAnnotatedLines {
+    file: Arc<File>,
     lines: Vec<Line>,
     multiline_depth: usize,
 }
@@ -91,15 +92,15 @@ impl<'a> EmitterWriter<'a> {
         }
     }
 
-    fn preprocess_annotations(cm: Option<&'a CodeMap>, spans: &[SpanLabel]) -> Vec<FileWithAnnotatedLines<'a>> {
-        fn add_annotation_to_file<'a>(file_vec: &mut Vec<FileWithAnnotatedLines<'a>>,
-                                  file: &'a File,
+    fn preprocess_annotations(cm: Option<&'a CodeMap>, spans: &[SpanLabel]) -> Vec<FileWithAnnotatedLines> {
+        fn add_annotation_to_file<'a>(file_vec: &mut Vec<FileWithAnnotatedLines>,
+                                  file: Arc<File>,
                                   line_index: usize,
                                   ann: Annotation) {
 
             for slot in file_vec.iter_mut() {
                 // Look through each of our files for the one we're adding to
-                if slot.file.name == file.name {
+                if slot.file.name() == file.name() {
                     // See if we already have a line for it
                     for line_slot in &mut slot.lines {
                         if line_slot.line_index == line_index {
@@ -740,7 +741,7 @@ impl<'a> EmitterWriter<'a> {
             return Ok(());
         };
         if let Ok(pos) =
-            annotated_files.binary_search_by(|x| x.file.name.cmp(&primary_lo.file.name)) {
+            annotated_files.binary_search_by(|x| x.file.name().cmp(&primary_lo.file.name())) {
             annotated_files.swap(0, pos);
         }
 
@@ -748,7 +749,7 @@ impl<'a> EmitterWriter<'a> {
         for annotated_file in annotated_files {
             // print out the span location and spacer before we print the annotated source
             // to do this, we need to know if this span will be primary
-            let is_primary = primary_lo.file.name == annotated_file.file.name;
+            let is_primary = primary_lo.file.name() == annotated_file.file.name();
             if is_primary {
                 // remember where we are in the output buffer for easy reference
                 let buffer_msg_line_offset = buffer.num_lines();
@@ -756,7 +757,7 @@ impl<'a> EmitterWriter<'a> {
                 buffer.prepend(buffer_msg_line_offset, "--> ", Style::LineNumber);
                 let loc = primary_lo.clone();
                 buffer.append(buffer_msg_line_offset,
-                              &format!("{}:{}:{}", loc.file.name, loc.position.line + 1, loc.position.column + 1),
+                              &format!("{}:{}:{}", loc.file.name(), loc.position.line + 1, loc.position.column + 1),
                               Style::LineAndColumn);
                 for _ in 0..max_line_num_len {
                     buffer.prepend(buffer_msg_line_offset, " ", Style::NoStyle);
@@ -771,7 +772,7 @@ impl<'a> EmitterWriter<'a> {
                 // Then, the secondary file indicator
                 buffer.prepend(buffer_msg_line_offset + 1, "::: ", Style::LineNumber);
                 buffer.append(buffer_msg_line_offset + 1,
-                              &annotated_file.file.name,
+                              annotated_file.file.name(),
                               Style::LineAndColumn);
                 for _ in 0..max_line_num_len {
                     buffer.prepend(buffer_msg_line_offset + 1, " ", Style::NoStyle);
@@ -797,7 +798,7 @@ impl<'a> EmitterWriter<'a> {
                 };
 
                 let depths = self.render_source_line(&mut buffer,
-                                                     annotated_file.file,
+                                                     &annotated_file.file,
                                                      &annotated_file.lines[line_idx],
                                                      width_offset,
                                                      code_offset);
