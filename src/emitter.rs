@@ -234,7 +234,7 @@ impl<'a> EmitterWriter<'a> {
         buffer.puts(line_offset, code_offset, &source_string, Style::Quotation);
         buffer.puts(line_offset,
                     0,
-                    &(line.line_index.to_string()),
+                    &((line.line_index + 1).to_string()),
                     Style::LineNumber);
 
         draw_col_separator(buffer, line_offset, width_offset - 2);
@@ -879,7 +879,7 @@ impl<'a> EmitterWriter<'a> {
     }
 
     fn emit_messages_default(&mut self, msgs: &[Diagnostic]) {
-        let max_line_num = self.get_max_line_num(msgs);
+        let max_line_num = self.get_max_line_num(msgs) + 1;
         let max_line_num_len = max_line_num.to_string().len();
 
         for msg in msgs {

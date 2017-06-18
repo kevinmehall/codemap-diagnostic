@@ -46,7 +46,7 @@ impl MultilineAnnotation {
 
     pub fn as_end(&self) -> Annotation {
         Annotation {
-            start_col: self.end_col - 1,
+            start_col: self.end_col.saturating_sub(1),
             end_col: self.end_col,
             is_primary: self.is_primary,
             label: self.label.clone(),
