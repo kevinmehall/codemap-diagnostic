@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use term;
 use isatty::stderr_isatty;
 
-use { Emitter, Level, Diagnostic, SpanLabel, SpanStyle };
+use { Level, Diagnostic, SpanLabel, SpanStyle };
 use codemap::{CodeMap, File};
 use snippet::{Annotation, AnnotationType, Line, MultilineAnnotation, StyledString, Style};
 use styled_buffer::StyledBuffer;
@@ -38,15 +38,9 @@ impl ColorConfig {
     }
 }
 
-pub struct EmitterWriter<'a> {
+pub struct Emitter<'a> {
     dst: Destination,
     cm: Option<&'a CodeMap>,
-}
-
-impl<'a> Emitter for EmitterWriter<'a> {
-    fn emit(&mut self, msgs: &[Diagnostic]) {
-        self.emit_messages_default(msgs)
-    }
 }
 
 struct FileWithAnnotatedLines {
@@ -55,24 +49,24 @@ struct FileWithAnnotatedLines {
     multiline_depth: usize,
 }
 
-impl<'a> EmitterWriter<'a> {
-    pub fn stderr(color_config: ColorConfig, code_map: Option<&'a CodeMap>) -> EmitterWriter {
+impl<'a> Emitter<'a> {
+    pub fn stderr(color_config: ColorConfig, code_map: Option<&'a CodeMap>) -> Emitter {
         if color_config.use_color() {
             let dst = Destination::from_stderr();
-            EmitterWriter {
+            Emitter {
                 dst: dst,
                 cm: code_map,
             }
         } else {
-            EmitterWriter {
+            Emitter {
                 dst: Raw(Box::new(io::stderr())),
                 cm: code_map,
             }
         }
     }
 
-    pub fn new(dst: Box<Write + Send>, code_map: Option<&'a CodeMap>) -> EmitterWriter<'a> {
-        EmitterWriter {
+    pub fn new(dst: Box<Write + Send>, code_map: Option<&'a CodeMap>) -> Emitter<'a> {
+        Emitter {
             dst: Raw(dst),
             cm: code_map,
         }
@@ -715,7 +709,7 @@ impl<'a> EmitterWriter<'a> {
 
         // Preprocess all the annotations so that they are grouped by file and by line number
         // This helps us quickly iterate over the whole message (including secondary file spans)
-        let mut annotated_files = EmitterWriter::preprocess_annotations(self.cm, spans);
+        let mut annotated_files = Emitter::preprocess_annotations(self.cm, spans);
 
         // Make sure our primary file comes first
         let primary_lo = if let (Some(ref cm), Some(ref primary_span)) =
@@ -864,7 +858,11 @@ impl<'a> EmitterWriter<'a> {
         Ok(())
     }
 
-    fn emit_messages_default(&mut self, msgs: &[Diagnostic]) {
+    /// Print a group of diagnostic messages.
+    ///
+    /// The messages within a group are printed atomically without spacing between them, and share
+    /// consistent formatting elements, such as aligned line number width.
+    pub fn emit(&mut self, msgs: &[Diagnostic]) {
         let max_line_num = self.get_max_line_num(msgs) + 1;
         let max_line_num_len = max_line_num.to_string().len();
 

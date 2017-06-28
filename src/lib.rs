@@ -9,7 +9,7 @@ mod snippet;
 mod styled_buffer;
 mod emitter;
 
-pub use emitter::{ ColorConfig, EmitterWriter };
+pub use emitter::{ ColorConfig, Emitter };
 
 /// A diagnostic message
 #[derive(Clone, Debug)]
@@ -93,12 +93,4 @@ pub struct SpanLabel {
 pub enum SpanStyle {
     Primary,
     Secondary,
-}
-
-pub trait Emitter {
-    /// Print a group of diagnostic messages.
-    ///
-    /// The messages within a group are printed atomically without spacing between them, and share
-    /// consistent formatting elements, such as aligned line number width.
-    fn emit(&mut self, messages: &[Diagnostic]);
 }

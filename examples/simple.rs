@@ -1,7 +1,7 @@
 extern crate codemap_diagnostic;
 extern crate codemap;
 use codemap::{ CodeMap };
-use codemap_diagnostic::{EmitterWriter, Level, SpanLabel, SpanStyle, Diagnostic, ColorConfig, Emitter};
+use codemap_diagnostic::{ Level, SpanLabel, SpanStyle, Diagnostic, ColorConfig, Emitter };
 
 
 fn main() {
@@ -28,6 +28,6 @@ pub fn look_up_pos(&self, pos: Pos) -> Loc {
 
     let d3 = Diagnostic { level: Level::Help, message:"Help message".to_owned(), code: None, spans: vec![] };
 
-    let mut emitter = EmitterWriter::stderr(ColorConfig::Always, Some(&codemap));
+    let mut emitter = Emitter::stderr(ColorConfig::Always, Some(&codemap));
     emitter.emit(&[d1, d2, d3]);
 }
