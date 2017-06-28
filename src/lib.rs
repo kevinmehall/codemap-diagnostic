@@ -1,3 +1,37 @@
+//! A library for formatting compiler error messages,
+//! [extracted from rustc](https://github.com/rust-lang/rust/tree/master/src/librustc_errors)
+//! and built on the types from the [codemap](https://github.com/kevinmehall/codemap) crate.
+//!
+//! # Example
+//! ```
+//! extern crate codemap;
+//! extern crate codemap_diagnostic;
+//! use codemap::CodeMap;
+//! use codemap_diagnostic::{ Level, SpanLabel, SpanStyle, Diagnostic, ColorConfig, Emitter };
+//!
+//! fn main() {
+//!   let code = "foo + bar";
+//!   let mut codemap = CodeMap::new();
+//!   let file_span = codemap.add_file("test.rs".to_owned(), code.to_owned()).span;
+//!   let name_span = file_span.subspan(0, 3);
+//!
+//!   let label = SpanLabel {
+//!       span: name_span,
+//!       style: SpanStyle::Primary,
+//!       label: Some("undefined variable".to_owned())
+//!   };
+//!   let d = Diagnostic {
+//!       level: Level::Error,
+//!       message: "cannot find value `foo` in this scope".to_owned(),
+//!       code: Some("C000".to_owned()),
+//!       spans: vec![label]
+//!   };
+//!
+//!   let mut emitter = Emitter::stderr(ColorConfig::Always, Some(&codemap));
+//!   emitter.emit(&[d]);
+//! }
+//! ```
+
 extern crate term;
 extern crate codemap;
 extern crate isatty;
@@ -11,7 +45,7 @@ mod emitter;
 
 pub use emitter::{ ColorConfig, Emitter };
 
-/// A diagnostic message
+/// A diagnostic message.
 #[derive(Clone, Debug)]
 pub struct Diagnostic {
     /// The severity of the message, used to set color scheme
@@ -27,7 +61,9 @@ pub struct Diagnostic {
     pub spans: Vec<SpanLabel>,
 }
 
-/// A level representing the severity of a Diagnostic
+/// A level representing the severity of a Diagnostic.
+///
+/// These result in different output styling.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Level {
     Bug,

@@ -21,10 +21,16 @@ use codemap::{CodeMap, File};
 use snippet::{Annotation, AnnotationType, Line, MultilineAnnotation, StyledString, Style};
 use styled_buffer::StyledBuffer;
 
+/// Settings for terminal styling.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ColorConfig {
+    /// Use colored output if stdout is a terminal.
     Auto,
+
+    /// Always use colored output.
     Always,
+
+    /// Never use colored output.
     Never,
 }
 
@@ -38,6 +44,7 @@ impl ColorConfig {
     }
 }
 
+/// Formats and prints diagnostic messages.
 pub struct Emitter<'a> {
     dst: Destination,
     cm: Option<&'a CodeMap>,
@@ -50,6 +57,7 @@ struct FileWithAnnotatedLines {
 }
 
 impl<'a> Emitter<'a> {
+    /// Creates an emitter wrapping stderr.
     pub fn stderr(color_config: ColorConfig, code_map: Option<&'a CodeMap>) -> Emitter {
         if color_config.use_color() {
             let dst = Destination::from_stderr();
@@ -65,6 +73,7 @@ impl<'a> Emitter<'a> {
         }
     }
 
+    /// Creates an emitter wrapping a boxed `Write` trait object.
     pub fn new(dst: Box<Write + Send>, code_map: Option<&'a CodeMap>) -> Emitter<'a> {
         Emitter {
             dst: Raw(dst),
