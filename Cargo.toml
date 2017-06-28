@@ -3,13 +3,13 @@ name = "codemap-diagnostic"
 version = "0.1.0"
 authors = ["Kevin Mehall <km@kevinmehall.net>", "The Rust Project Developers"]
 license = "MIT/Apache-2.0"
-repository = "https://github.com/kevinmehall/codemap"
+repository = "https://github.com/kevinmehall/codemap-diagnostic"
 documentation = "https://docs.rs/codemap-diagnostic"
 description = """
-Data structures for representing compiler error/diagnostic messages, built on the `codemap` crate.
+Library for displaying compiler error messages, extracted from rustc.
 """
 readme = "README.md"
-keywords = ["compiler", "error", "warning", "rustc"]
+keywords = ["compiler", "error", "warning", "format", "rustc"]
 categories = ["command-line-interface"]
 
 [dependencies]
