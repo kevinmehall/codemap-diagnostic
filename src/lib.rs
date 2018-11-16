@@ -34,7 +34,7 @@
 
 extern crate term;
 extern crate codemap;
-extern crate isatty;
+extern crate atty;
 
 use codemap::Span;
 
