@@ -14,7 +14,7 @@ use std::cmp::min;
 use std::sync::Arc;
 use std::collections::HashMap;
 use term;
-use isatty::stderr_isatty;
+use atty::{self, Stream};
 
 use { Level, Diagnostic, SpanLabel, SpanStyle };
 use codemap::{CodeMap, File};
@@ -39,7 +39,7 @@ impl ColorConfig {
         match *self {
             ColorConfig::Always => true,
             ColorConfig::Never => false,
-            ColorConfig::Auto => stderr_isatty(),
+            ColorConfig::Auto => atty::is(Stream::Stderr),
         }
     }
 }
