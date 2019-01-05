@@ -46,7 +46,7 @@ impl ColorConfig {
 
 /// Formats and prints diagnostic messages.
 pub struct Emitter<'a> {
-    dst: Destination,
+    dst: Destination<'a>,
     cm: Option<&'a CodeMap>,
 }
 
@@ -58,7 +58,7 @@ struct FileWithAnnotatedLines {
 
 impl<'a> Emitter<'a> {
     /// Creates an emitter wrapping stderr.
-    pub fn stderr(color_config: ColorConfig, code_map: Option<&'a CodeMap>) -> Emitter {
+    pub fn stderr(color_config: ColorConfig, code_map: Option<&'a CodeMap>) -> Emitter<'a> {
         if color_config.use_color() {
             let dst = Destination::from_stderr();
             Emitter {
@@ -74,7 +74,7 @@ impl<'a> Emitter<'a> {
     }
 
     /// Creates an emitter wrapping a boxed `Write` trait object.
-    pub fn new(dst: Box<Write + Send>, code_map: Option<&'a CodeMap>) -> Emitter<'a> {
+    pub fn new(dst: Box<Write + Send + 'a>, code_map: Option<&'a CodeMap>) -> Emitter<'a> {
         Emitter {
             dst: Raw(dst),
             cm: code_map,
@@ -978,10 +978,10 @@ fn emit_to_destination(rendered_buffer: &Vec<Vec<StyledString>>,
 pub type BufferedStderr = term::Terminal<Output = BufferedWriter> + Send;
 
 #[allow(dead_code)]
-pub enum Destination {
+pub enum Destination<'a> {
     Terminal(Box<term::StderrTerminal>),
     BufferedTerminal(Box<BufferedStderr>),
-    Raw(Box<Write + Send>),
+    Raw(Box<Write + Send + 'a>),
 }
 
 use self::Destination::*;
@@ -1019,11 +1019,11 @@ impl Write for BufferedWriter {
     }
 }
 
-impl Destination {
+impl<'a> Destination<'a> {
     #[cfg(not(windows))]
     /// When not on Windows, prefer the buffered terminal so that we can buffer an entire error
     /// to be emitted at one time.
-    fn from_stderr() -> Destination {
+    fn from_stderr() -> Destination<'static> {
         let stderr: Option<Box<BufferedStderr>> =
             term::TerminfoTerminal::new(BufferedWriter::_new())
                 .map(|t| Box::new(t) as Box<BufferedStderr>);
@@ -1036,7 +1036,7 @@ impl Destination {
 
     #[cfg(windows)]
     /// Return a normal, unbuffered terminal when on Windows.
-    fn from_stderr() -> Destination {
+    fn from_stderr() -> Destination<'static> {
         let stderr: Option<Box<term::StderrTerminal>> = term::TerminfoTerminal::new(io::stderr())
             .map(|t| Box::new(t) as Box<term::StderrTerminal>)
             .or_else(|| {
@@ -1119,7 +1119,7 @@ impl Destination {
     }
 }
 
-impl Write for Destination {
+impl<'a> Write for Destination<'a> {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         match *self {
             Terminal(ref mut t) => t.write(bytes),
