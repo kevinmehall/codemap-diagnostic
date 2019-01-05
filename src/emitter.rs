@@ -73,6 +73,14 @@ impl<'a> Emitter<'a> {
         }
     }
 
+    /// Creates an emitter wrapping a vector.
+    pub fn vec(vec: &'a mut Vec<u8>, code_map: Option<&'a CodeMap>) -> Emitter<'a> {
+        Emitter {
+            dst: Raw(Box::new(vec)),
+            cm: code_map,
+        }
+    }
+
     /// Creates an emitter wrapping a boxed `Write` trait object.
     pub fn new(dst: Box<Write + Send + 'a>, code_map: Option<&'a CodeMap>) -> Emitter<'a> {
         Emitter {
