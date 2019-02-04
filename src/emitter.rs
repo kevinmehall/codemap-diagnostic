@@ -13,7 +13,7 @@ use std::io;
 use std::cmp::min;
 use std::sync::Arc;
 use std::collections::HashMap;
-use term;
+use term::{self, Terminal};
 use atty::{self, Stream};
 
 use { Level, Diagnostic, SpanLabel, SpanStyle };
@@ -1024,12 +1024,16 @@ impl Destination {
     /// When not on Windows, prefer the buffered terminal so that we can buffer an entire error
     /// to be emitted at one time.
     fn from_stderr() -> Destination {
-        let stderr: Option<Box<BufferedStderr>> =
-            term::TerminfoTerminal::new(BufferedWriter::_new())
-                .map(|t| Box::new(t) as Box<BufferedStderr>);
+        let stderr = term::TerminfoTerminal::new(BufferedWriter::_new());
 
         match stderr {
-            Some(t) => BufferedTerminal(t),
+            Some(t) => {
+                if t.supports_color() {
+                    BufferedTerminal(Box::new(t))
+                } else {
+                    Raw(Box::new(io::stderr()))
+                }
+            },
             None => Raw(Box::new(io::stderr())),
         }
     }
