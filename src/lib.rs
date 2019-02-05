@@ -32,7 +32,7 @@
 //! }
 //! ```
 
-extern crate term;
+extern crate termcolor;
 extern crate codemap;
 extern crate atty;
 
@@ -44,6 +44,7 @@ mod styled_buffer;
 mod emitter;
 
 pub use emitter::{ ColorConfig, Emitter };
+use termcolor::{ ColorSpec, Color };
 
 /// A diagnostic message.
 #[derive(Clone, Debug)]
@@ -80,20 +81,28 @@ impl ::std::fmt::Display for Level {
 }
 
 impl Level {
-    fn color(self) -> term::color::Color {
+    fn color(self) -> ColorSpec {
+        let mut spec = ColorSpec::new();
         use self::Level::*;
         match self {
-            Bug | Error => term::color::BRIGHT_RED,
-            Warning => {
-                if cfg!(windows) {
-                    term::color::BRIGHT_YELLOW
-                } else {
-                    term::color::YELLOW
-                }
+            Bug | Error => {
+                spec.set_fg(Some(Color::Red))
+                    .set_intense(true);
             }
-            Note => term::color::BRIGHT_GREEN,
-            Help => term::color::BRIGHT_CYAN,
+            Warning => {
+                spec.set_fg(Some(Color::Yellow))
+                    .set_intense(cfg!(windows));
+            }
+            Note => {
+                spec.set_fg(Some(Color::Green))
+                    .set_intense(true);
+            }
+            Help => {
+                spec.set_fg(Some(Color::Cyan))
+                    .set_intense(true);
+            }
         }
+        spec
     }
 
     pub fn to_str(self) -> &'static str {
