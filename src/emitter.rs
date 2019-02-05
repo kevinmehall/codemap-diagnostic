@@ -389,8 +389,11 @@ impl<'a> Emitter<'a> {
                             && next.has_label())     // multiline start/end, move it to a new line
                         || (annotation.has_label()   // so as not to overlap the orizontal lines.
                             && next.takes_space())
-                        || (annotation.takes_space()
-                            && next.takes_space())
+                        || (annotation.takes_space() && next.takes_space())
+                        || (overlaps(next, annotation, l)
+                            && next.end_col <= annotation.end_col
+                            && next.has_label()
+                            && p == 0)  // Avoid #42595.
                     {
                         // This annotation needs a new line in the output.
                         p += 1;
