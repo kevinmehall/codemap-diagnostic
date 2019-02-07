@@ -999,7 +999,7 @@ fn emit_to_destination(rendered_buffer: &Vec<Vec<StyledString>>,
 }
 
 #[allow(dead_code)]
-pub enum Destination<'a> {
+enum Destination<'a> {
     Terminal(StandardStream),
     Buffered(BufferWriter),
     Raw(Box<Write + Send + 'a>),
@@ -1007,7 +1007,7 @@ pub enum Destination<'a> {
 
 use self::Destination::*;
 
-pub enum WritableDst<'a, 'b> {
+enum WritableDst<'a, 'b> {
     Terminal(&'b mut StandardStream),
     Buffered(&'b mut BufferWriter, Buffer),
     Raw(&'b mut Box<Write + Send + 'a>),
