@@ -50,7 +50,7 @@ impl ColorConfig {
 
 /// Formats and prints diagnostic messages.
 pub struct Emitter<'a> {
-    dst: Destination,
+    dst: Destination<'a>,
     cm: Option<&'a CodeMap>,
 }
 
@@ -62,7 +62,7 @@ struct FileWithAnnotatedLines {
 
 impl<'a> Emitter<'a> {
     /// Creates an emitter wrapping stderr.
-    pub fn stderr(color_config: ColorConfig, code_map: Option<&'a CodeMap>) -> Emitter {
+    pub fn stderr(color_config: ColorConfig, code_map: Option<&'a CodeMap>) -> Emitter<'a> {
         let dst = Destination::from_stderr(color_config);
         Emitter {
             dst: dst,
@@ -70,8 +70,16 @@ impl<'a> Emitter<'a> {
         }
     }
 
+    /// Creates an emitter wrapping a vector.
+    pub fn vec(vec: &'a mut Vec<u8>, code_map: Option<&'a CodeMap>) -> Emitter<'a> {
+        Emitter {
+            dst: Raw(Box::new(vec)),
+            cm: code_map,
+        }
+    }
+
     /// Creates an emitter wrapping a boxed `Write` trait object.
-    pub fn new(dst: Box<Write + Send>, code_map: Option<&'a CodeMap>) -> Emitter<'a> {
+    pub fn new(dst: Box<Write + Send + 'a>, code_map: Option<&'a CodeMap>) -> Emitter<'a> {
         Emitter {
             dst: Raw(dst),
             cm: code_map,
@@ -991,22 +999,22 @@ fn emit_to_destination(rendered_buffer: &Vec<Vec<StyledString>>,
 }
 
 #[allow(dead_code)]
-pub enum Destination {
+pub enum Destination<'a> {
     Terminal(StandardStream),
     Buffered(BufferWriter),
-    Raw(Box<Write + Send>),
+    Raw(Box<Write + Send + 'a>),
 }
 
 use self::Destination::*;
 
-pub enum WritableDst<'a> {
-    Terminal(&'a mut StandardStream),
-    Buffered(&'a mut BufferWriter, Buffer),
-    Raw(&'a mut Box<Write + Send>),
+pub enum WritableDst<'a, 'b> {
+    Terminal(&'b mut StandardStream),
+    Buffered(&'b mut BufferWriter, Buffer),
+    Raw(&'b mut Box<Write + Send + 'a>),
 }
 
-impl Destination {
-    fn from_stderr(color: ColorConfig) -> Destination {
+impl<'a> Destination<'a> {
+    fn from_stderr(color: ColorConfig) -> Destination<'a> {
         let choice = color.to_color_choice();
         // On Windows we'll be performing global synchronization on the entire
         // system for emitting rustc errors, so there's no need to buffer
@@ -1021,7 +1029,7 @@ impl Destination {
         }
     }
 
-    fn writable<'a>(&'a mut self) -> WritableDst<'a> {
+    fn writable<'b>(&'b mut self) -> WritableDst<'a, 'b> {
         match *self {
             Destination::Terminal(ref mut t) => WritableDst::Terminal(t),
             Destination::Buffered(ref mut t) => {
@@ -1033,7 +1041,7 @@ impl Destination {
     }
 }
 
-impl<'a> WritableDst<'a> {
+impl<'a, 'b> WritableDst<'a, 'b> {
     fn apply_style(&mut self, lvl: Level, style: Style) -> io::Result<()> {
         let mut spec = ColorSpec::new();
         match style {
@@ -1098,7 +1106,7 @@ impl<'a> WritableDst<'a> {
     }
 }
 
-impl<'a> Write for WritableDst<'a> {
+impl<'a, 'b> Write for WritableDst<'a, 'b> {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         match *self {
             WritableDst::Terminal(ref mut t) => t.write(bytes),
@@ -1116,7 +1124,7 @@ impl<'a> Write for WritableDst<'a> {
     }
 }
 
-impl<'a> Drop for WritableDst<'a> {
+impl<'a, 'b> Drop for WritableDst<'a, 'b> {
     fn drop(&mut self) {
         match *self {
             WritableDst::Buffered(ref mut dst, ref mut buf) => {
