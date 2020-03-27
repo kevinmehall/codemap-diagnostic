@@ -47,7 +47,7 @@ pub use emitter::{ ColorConfig, Emitter };
 use termcolor::{ ColorSpec, Color };
 
 /// A diagnostic message.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Diagnostic {
     /// The severity of the message, used to set color scheme
     pub level: Level,
@@ -119,7 +119,7 @@ impl Level {
 }
 
 /// A labeled region of the code related to a Diagnostic.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SpanLabel {
     /// The location in the code.
     ///
