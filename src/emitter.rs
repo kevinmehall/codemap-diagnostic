@@ -13,10 +13,9 @@ use std::io;
 use std::cmp::min;
 use std::sync::Arc;
 use std::collections::HashMap;
-use atty;
 use termcolor::{StandardStream, ColorChoice, ColorSpec, BufferWriter};
 use termcolor::{WriteColor, Color, Buffer};
-
+use std::io::IsTerminal;
 use { Level, Diagnostic, SpanLabel, SpanStyle };
 use codemap::{CodeMap, File};
 use snippet::{Annotation, AnnotationType, Line, MultilineAnnotation, StyledString, Style};
@@ -40,7 +39,7 @@ impl ColorConfig {
         match *self {
             ColorConfig::Always => ColorChoice::Always,
             ColorConfig::Never => ColorChoice::Never,
-            ColorConfig::Auto if atty::is(atty::Stream::Stderr) => {
+            ColorConfig::Auto if std::io::stderr().is_terminal() => {
                 ColorChoice::Auto
             }
             ColorConfig::Auto => ColorChoice::Never,
