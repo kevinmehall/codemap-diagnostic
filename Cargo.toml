@@ -14,5 +14,4 @@ categories = ["command-line-interface"]
 
 [dependencies]
 codemap = { version = "0.1.0" }
-atty = "0.2.11"
 termcolor = "1.0.4"

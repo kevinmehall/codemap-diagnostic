@@ -34,7 +34,6 @@
 
 extern crate termcolor;
 extern crate codemap;
-extern crate atty;
 
 use codemap::Span;
 
