@@ -846,53 +846,62 @@ impl<'a> Emitter<'a> {
                 }
                 // check to see if we need to print out or elide lines that come between
                 // this annotated line and the next one.
+
                 if line_idx < (annotated_file.lines.len() - 1) {
                     let line_idx_delta = annotated_file.lines[line_idx + 1].line_index
                         - annotated_file.lines[line_idx].line_index;
-                    if line_idx_delta > 2 {
-                        let last_buffer_line_num = buffer.num_lines();
-                        buffer.puts(last_buffer_line_num, 0, "...", Style::LineNumber);
+                    match line_idx_delta.cmp(&2) {
+                        std::cmp::Ordering::Greater => {
+                            let last_buffer_line_num = buffer.num_lines();
+                            buffer.puts(last_buffer_line_num, 0, "...", Style::LineNumber);
 
-                        // Set the multiline annotation vertical lines on `...` bridging line.
-                        for (depth, style) in &multilines {
-                            draw_multiline_line(
+                            // Set the multiline annotation vertical lines on `...` bridging line.
+                            for (depth, style) in &multilines {
+                                draw_multiline_line(
+                                    &mut buffer,
+                                    last_buffer_line_num,
+                                    width_offset,
+                                    *depth,
+                                    *style,
+                                );
+                            }
+                        }
+                        std::cmp::Ordering::Equal => {
+                            let unannotated_line = annotated_file
+                                .file
+                                .source_line(annotated_file.lines[line_idx].line_index);
+
+                            let last_buffer_line_num = buffer.num_lines();
+
+                            buffer.puts(
+                                last_buffer_line_num,
+                                0,
+                                &(annotated_file.lines[line_idx + 1].line_index - 1).to_string(),
+                                Style::LineNumber,
+                            );
+                            draw_col_separator(
                                 &mut buffer,
                                 last_buffer_line_num,
-                                width_offset,
-                                *depth,
-                                *style,
+                                1 + max_line_num_len,
                             );
-                        }
-                    } else if line_idx_delta == 2 {
-                        let unannotated_line = annotated_file
-                            .file
-                            .source_line(annotated_file.lines[line_idx].line_index);
-
-                        let last_buffer_line_num = buffer.num_lines();
-
-                        buffer.puts(
-                            last_buffer_line_num,
-                            0,
-                            &(annotated_file.lines[line_idx + 1].line_index - 1).to_string(),
-                            Style::LineNumber,
-                        );
-                        draw_col_separator(&mut buffer, last_buffer_line_num, 1 + max_line_num_len);
-                        buffer.puts(
-                            last_buffer_line_num,
-                            code_offset,
-                            unannotated_line,
-                            Style::Quotation,
-                        );
-
-                        for (depth, style) in &multilines {
-                            draw_multiline_line(
-                                &mut buffer,
+                            buffer.puts(
                                 last_buffer_line_num,
-                                width_offset,
-                                *depth,
-                                *style,
+                                code_offset,
+                                unannotated_line,
+                                Style::Quotation,
                             );
+
+                            for (depth, style) in &multilines {
+                                draw_multiline_line(
+                                    &mut buffer,
+                                    last_buffer_line_num,
+                                    width_offset,
+                                    *depth,
+                                    *style,
+                                );
+                            }
                         }
+                        std::cmp::Ordering::Less => {}
                     }
                 }
 
