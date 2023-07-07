@@ -8,18 +8,18 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::io::prelude::*;
-use std::io;
-use std::cmp::min;
-use std::sync::Arc;
-use std::collections::HashMap;
-use termcolor::{StandardStream, ColorChoice, ColorSpec, BufferWriter};
-use termcolor::{WriteColor, Color, Buffer};
-use std::io::IsTerminal;
-use { Level, Diagnostic, SpanLabel, SpanStyle };
 use codemap::{CodeMap, File};
-use snippet::{Annotation, AnnotationType, Line, MultilineAnnotation, StyledString, Style};
+use snippet::{Annotation, AnnotationType, Line, MultilineAnnotation, Style, StyledString};
+use std::cmp::min;
+use std::collections::HashMap;
+use std::io;
+use std::io::prelude::*;
+use std::io::IsTerminal;
+use std::sync::Arc;
 use styled_buffer::StyledBuffer;
+use termcolor::{Buffer, Color, WriteColor};
+use termcolor::{BufferWriter, ColorChoice, ColorSpec, StandardStream};
+use {Diagnostic, Level, SpanLabel, SpanStyle};
 
 /// Settings for terminal styling.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -35,13 +35,11 @@ pub enum ColorConfig {
 }
 
 impl ColorConfig {
-    fn to_color_choice(&self) -> ColorChoice {
+    fn get_color_choice(&self) -> ColorChoice {
         match *self {
             ColorConfig::Always => ColorChoice::Always,
             ColorConfig::Never => ColorChoice::Never,
-            ColorConfig::Auto if std::io::stderr().is_terminal() => {
-                ColorChoice::Auto
-            }
+            ColorConfig::Auto if std::io::stderr().is_terminal() => ColorChoice::Auto,
             ColorConfig::Auto => ColorChoice::Never,
         }
     }
@@ -63,10 +61,7 @@ impl<'a> Emitter<'a> {
     /// Creates an emitter wrapping stderr.
     pub fn stderr(color_config: ColorConfig, code_map: Option<&'a CodeMap>) -> Emitter<'a> {
         let dst = Destination::from_stderr(color_config);
-        Emitter {
-            dst: dst,
-            cm: code_map,
-        }
+        Emitter { dst, cm: code_map }
     }
 
     /// Creates an emitter wrapping a vector.
@@ -78,19 +73,23 @@ impl<'a> Emitter<'a> {
     }
 
     /// Creates an emitter wrapping a boxed `Write` trait object.
-    pub fn new(dst: Box<Write + Send + 'a>, code_map: Option<&'a CodeMap>) -> Emitter<'a> {
+    pub fn new(dst: Box<dyn Write + Send + 'a>, code_map: Option<&'a CodeMap>) -> Emitter<'a> {
         Emitter {
             dst: Raw(dst),
             cm: code_map,
         }
     }
 
-    fn preprocess_annotations(cm: Option<&'a CodeMap>, spans: &[SpanLabel]) -> Vec<FileWithAnnotatedLines> {
-        fn add_annotation_to_file<'a>(file_vec: &mut Vec<FileWithAnnotatedLines>,
-                                  file: Arc<File>,
-                                  line_index: usize,
-                                  ann: Annotation) {
-
+    fn preprocess_annotations(
+        cm: Option<&'a CodeMap>,
+        spans: &[SpanLabel],
+    ) -> Vec<FileWithAnnotatedLines> {
+        fn add_annotation_to_file(
+            file_vec: &mut Vec<FileWithAnnotatedLines>,
+            file: Arc<File>,
+            line_index: usize,
+            ann: Annotation,
+        ) {
             for slot in file_vec.iter_mut() {
                 // Look through each of our files for the one we're adding to
                 if slot.file.name() == file.name() {
@@ -103,7 +102,7 @@ impl<'a> Emitter<'a> {
                     }
                     // We don't have a line yet, create one
                     slot.lines.push(Line {
-                        line_index: line_index,
+                        line_index,
                         annotations: vec![ann],
                     });
                     slot.lines.sort();
@@ -112,11 +111,11 @@ impl<'a> Emitter<'a> {
             }
             // This is the first time we're seeing the file
             file_vec.push(FileWithAnnotatedLines {
-                file: file,
+                file,
                 lines: vec![Line {
-                                line_index: line_index,
-                                annotations: vec![ann],
-                            }],
+                    line_index,
+                    annotations: vec![ann],
+                }],
                 multiline_depth: 0,
             });
         }
@@ -124,7 +123,7 @@ impl<'a> Emitter<'a> {
         let mut output = vec![];
         let mut multiline_annotations = vec![];
 
-        if let Some(ref cm) = cm {
+        if let Some(cm) = cm {
             for span_label in spans {
                 let mut loc = cm.look_up_span(span_label.span);
 
@@ -161,26 +160,22 @@ impl<'a> Emitter<'a> {
                 };
 
                 if !ann.is_multiline() {
-                    add_annotation_to_file(&mut output,
-                                           loc.file,
-                                           loc.begin.line,
-                                           ann);
+                    add_annotation_to_file(&mut output, loc.file, loc.begin.line, ann);
                 }
             }
         }
 
         // Find overlapping multiline annotations, put them at different depths
-        multiline_annotations.sort_by(|a, b| {
-            (a.1.line_start, a.1.line_end).cmp(&(b.1.line_start, b.1.line_end))
-        });
+        multiline_annotations
+            .sort_by(|a, b| (a.1.line_start, a.1.line_end).cmp(&(b.1.line_start, b.1.line_end)));
         for item in multiline_annotations.clone() {
             let ann = item.1;
             for item in multiline_annotations.iter_mut() {
-                let ref mut a = item.1;
+                let a = &mut item.1;
                 // Move all other multiline annotations overlapping with this one
                 // one level to the right.
-                if &ann != a &&
-                    num_overlap(ann.line_start, ann.line_end, a.line_start, a.line_end, true)
+                if &ann != a
+                    && num_overlap(ann.line_start, ann.line_end, a.line_start, a.line_end, true)
                 {
                     a.increase_depth();
                 } else {
@@ -189,7 +184,7 @@ impl<'a> Emitter<'a> {
             }
         }
 
-        let mut max_depth = 0;  // max overlapping multiline spans
+        let mut max_depth = 0; // max overlapping multiline spans
         for (file, ann) in multiline_annotations {
             if ann.depth > max_depth {
                 max_depth = ann.depth;
@@ -212,23 +207,26 @@ impl<'a> Emitter<'a> {
         output
     }
 
-     fn render_source_line(&self,
-                          buffer: &mut StyledBuffer,
-                          file: &File,
-                          line: &Line,
-                          width_offset: usize,
-                          code_offset: usize) -> Vec<(usize, Style)> {
-
+    fn render_source_line(
+        &self,
+        buffer: &mut StyledBuffer,
+        file: &File,
+        line: &Line,
+        width_offset: usize,
+        code_offset: usize,
+    ) -> Vec<(usize, Style)> {
         let source_string = file.source_line(line.line_index);
 
         let line_offset = buffer.num_lines();
 
         // First create the source line we will highlight.
-        buffer.puts(line_offset, code_offset, &source_string, Style::Quotation);
-        buffer.puts(line_offset,
-                    0,
-                    &((line.line_index + 1).to_string()),
-                    Style::LineNumber);
+        buffer.puts(line_offset, code_offset, source_string, Style::Quotation);
+        buffer.puts(
+            line_offset,
+            0,
+            &((line.line_index + 1).to_string()),
+            Style::LineNumber,
+        );
 
         draw_col_separator(buffer, line_offset, width_offset - 2);
 
@@ -249,20 +247,19 @@ impl<'a> Emitter<'a> {
         // 4 | | }
         //   | |_^ test
         if line.annotations.len() == 1 {
-            if let Some(ref ann) = line.annotations.get(0) {
+            if let Some(ann) = line.annotations.get(0) {
                 if let AnnotationType::MultilineStart(depth) = ann.annotation_type {
-                    if source_string.chars()
-                                    .take(ann.start_col)
-                                    .all(|c| c.is_whitespace()) {
+                    if source_string
+                        .chars()
+                        .take(ann.start_col)
+                        .all(|c| c.is_whitespace())
+                    {
                         let style = if ann.is_primary {
                             Style::UnderlinePrimary
                         } else {
                             Style::UnderlineSecondary
                         };
-                        buffer.putc(line_offset,
-                                    width_offset + depth - 1,
-                                    '/',
-                                    style);
+                        buffer.putc(line_offset, width_offset + depth - 1, '/', style);
                         return vec![(depth, style)];
                     }
                 }
@@ -301,7 +298,7 @@ impl<'a> Emitter<'a> {
         // the left, so the rightmost span needs to be rendered first,
         // otherwise the lines would end up needing to go over a message.
         let mut annotations = line.annotations.clone();
-        annotations.sort_by(|a,b| b.start_col.cmp(&a.start_col));
+        annotations.sort_by(|a, b| b.start_col.cmp(&a.start_col));
 
         // First, figure out where each label will be positioned.
         //
@@ -373,7 +370,8 @@ impl<'a> Emitter<'a> {
                 if overlaps(next, annotation, 0)  // This label overlaps with another one and both
                     && annotation.has_label()     // take space (they have text and are not
                     && j > i                      // multiline lines).
-                    && p == 0  // We're currently on the first line, move the label one line down
+                    && p == 0
+                // We're currently on the first line, move the label one line down
                 {
                     // This annotation needs a new line in the output.
                     p += 1;
@@ -382,7 +380,7 @@ impl<'a> Emitter<'a> {
             }
             annotations_position.push((p, annotation));
             for (j, next) in annotations.iter().enumerate() {
-                if j > i  {
+                if j > i {
                     let l = if let Some(ref label) = next.label {
                         label.len() + 2
                     } else {
@@ -409,7 +407,8 @@ impl<'a> Emitter<'a> {
                         || (overlaps(next, annotation, l)
                             && next.end_col <= annotation.end_col
                             && next.has_label()
-                            && p == 0)  // Avoid #42595.
+                            && p == 0)
+                    // Avoid #42595.
                     {
                         // This annotation needs a new line in the output.
                         p += 1;
@@ -428,8 +427,13 @@ impl<'a> Emitter<'a> {
 
         // If there are no annotations or the only annotations on this line are
         // MultilineLine, then there's only code being shown, stop processing.
-        if line.annotations.is_empty() || line.annotations.iter()
-            .filter(|a| !a.is_line()).collect::<Vec<_>>().len() == 0
+        if line.annotations.is_empty()
+            || line
+                .annotations
+                .iter()
+                .filter(|a| !a.is_line())
+                .collect::<Vec<_>>()
+                .is_empty()
         {
             return vec![];
         }
@@ -447,10 +451,12 @@ impl<'a> Emitter<'a> {
         //   |
         for pos in 0..line_len + 1 {
             draw_col_separator(buffer, line_offset + pos + 1, width_offset - 2);
-            buffer.putc(line_offset + pos + 1,
-                        width_offset - 2,
-                        '|',
-                        Style::LineNumber);
+            buffer.putc(
+                line_offset + pos + 1,
+                width_offset - 2,
+                '|',
+                Style::LineNumber,
+            );
         }
 
         // Write the horizontal lines for multiline annotations
@@ -473,14 +479,15 @@ impl<'a> Emitter<'a> {
             };
             let pos = pos + 1;
             match annotation.annotation_type {
-                AnnotationType::MultilineStart(depth) |
-                AnnotationType::MultilineEnd(depth) => {
-                    draw_range(buffer,
-                               '_',
-                               line_offset + pos,
-                               width_offset + depth,
-                               code_offset + annotation.start_col,
-                               style);
+                AnnotationType::MultilineStart(depth) | AnnotationType::MultilineEnd(depth) => {
+                    draw_range(
+                        buffer,
+                        '_',
+                        line_offset + pos,
+                        width_offset + depth,
+                        code_offset + annotation.start_col,
+                        style,
+                    );
                 }
                 _ => (),
             }
@@ -507,27 +514,18 @@ impl<'a> Emitter<'a> {
 
             if pos > 1 && (annotation.has_label() || annotation.takes_space()) {
                 for p in line_offset + 1..line_offset + pos + 1 {
-                    buffer.putc(p,
-                                code_offset + annotation.start_col,
-                                '|',
-                                style);
+                    buffer.putc(p, code_offset + annotation.start_col, '|', style);
                 }
             }
             match annotation.annotation_type {
                 AnnotationType::MultilineStart(depth) => {
                     for p in line_offset + pos + 1..line_offset + line_len + 2 {
-                        buffer.putc(p,
-                                    width_offset + depth - 1,
-                                    '|',
-                                    style);
+                        buffer.putc(p, width_offset + depth - 1, '|', style);
                     }
                 }
                 AnnotationType::MultilineEnd(depth) => {
                     for p in line_offset..line_offset + pos + 1 {
-                        buffer.putc(p,
-                                    width_offset + depth - 1,
-                                    '|',
-                                    style);
+                        buffer.putc(p, width_offset + depth - 1, '|', style);
                     }
                 }
                 _ => (),
@@ -557,10 +555,7 @@ impl<'a> Emitter<'a> {
                 (pos + 2, annotation.start_col)
             };
             if let Some(ref label) = annotation.label {
-                buffer.puts(line_offset + pos,
-                            code_offset + col,
-                            &label,
-                            style);
+                buffer.puts(line_offset + pos, code_offset + col, label, style);
             }
         }
 
@@ -595,14 +590,12 @@ impl<'a> Emitter<'a> {
                 ('-', Style::UnderlineSecondary)
             };
             for p in annotation.start_col..annotation.end_col {
-                buffer.putc(line_offset + 1,
-                            code_offset + p,
-                            underline,
-                            style);
+                buffer.putc(line_offset + 1, code_offset + p, underline, style);
             }
         }
-        annotations_position.iter().filter_map(|&(_, annotation)| {
-            match annotation.annotation_type {
+        annotations_position
+            .iter()
+            .filter_map(|&(_, annotation)| match annotation.annotation_type {
                 AnnotationType::MultilineStart(p) | AnnotationType::MultilineEnd(p) => {
                     let style = if annotation.is_primary {
                         Style::LabelPrimary
@@ -610,32 +603,40 @@ impl<'a> Emitter<'a> {
                         Style::LabelSecondary
                     };
                     Some((p, style))
-                },
-                _ => None
-            }
-
-        }).collect::<Vec<_>>()
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>()
     }
 
     fn get_max_line_num(&mut self, diagnostics: &[Diagnostic]) -> usize {
-        if let Some(ref cm) = self.cm {
-            diagnostics.iter().map(|d| {
-                d.spans.iter().map(|span_label| {
-                    cm.look_up_pos(span_label.span.high()).position.line
-                }).max().unwrap_or(0)
-            }).max().unwrap_or(0)
-        } else { 0 }
+        if let Some(cm) = self.cm {
+            diagnostics
+                .iter()
+                .map(|d| {
+                    d.spans
+                        .iter()
+                        .map(|span_label| cm.look_up_pos(span_label.span.high()).position.line)
+                        .max()
+                        .unwrap_or(0)
+                })
+                .max()
+                .unwrap_or(0)
+        } else {
+            0
+        }
     }
 
     /// Add a left margin to every line but the first, given a padding length and the label being
     /// displayed, keeping the provided highlighting.
-    fn msg_to_buffer(&self,
-                     buffer: &mut StyledBuffer,
-                     msg: &Vec<(String, Style)>,
-                     padding: usize,
-                     label: &str,
-                     override_style: Option<Style>) {
-
+    fn msg_to_buffer(
+        &self,
+        buffer: &mut StyledBuffer,
+        msg: &[(String, Style)],
+        padding: usize,
+        label: &str,
+        override_style: Option<Style>,
+    ) {
         // The extra 5 ` ` is padding that's always needed to align to the `note: `:
         //
         //   error: message
@@ -687,7 +688,7 @@ impl<'a> Emitter<'a> {
         //                see how it *looks* with
         //                very *weird* formats
         //                see?
-        for &(ref text, ref style) in msg.iter() {
+        for (text, style) in msg.iter() {
             let lines = text.split('\n').collect::<Vec<_>>();
             if lines.len() > 1 {
                 for (i, line) in lines.iter().enumerate() {
@@ -703,17 +704,18 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    fn emit_message_default(&mut self,
-                            spans: &[SpanLabel],
-                            msg: &Vec<(String, Style)>,
-                            code: &Option<String>,
-                            level: &Level,
-                            max_line_num_len: usize,
-                            is_secondary: bool)
-                            -> io::Result<()> {
+    fn emit_message_default(
+        &mut self,
+        spans: &[SpanLabel],
+        msg: &[(String, Style)],
+        code: &Option<String>,
+        level: &Level,
+        max_line_num_len: usize,
+        is_secondary: bool,
+    ) -> io::Result<()> {
         let mut buffer = StyledBuffer::new();
 
-        if is_secondary && spans.len() == 0 {
+        if is_secondary && spans.is_empty() {
             // This is a secondary message with no span info
             for _ in 0..max_line_num_len {
                 buffer.prepend(0, " ", Style::NoStyle);
@@ -723,14 +725,14 @@ impl<'a> Emitter<'a> {
             buffer.append(0, ": ", Style::NoStyle);
             self.msg_to_buffer(&mut buffer, msg, max_line_num_len, "note", None);
         } else {
-            buffer.append(0, &level.to_string(), Style::Level(level.clone()));
+            buffer.append(0, &level.to_string(), Style::Level(*level));
             if let Some(code) = code.as_ref() {
-                buffer.append(0, "[", Style::Level(level.clone()));
-                buffer.append(0, &code, Style::Level(level.clone()));
-                buffer.append(0, "]", Style::Level(level.clone()));
+                buffer.append(0, "[", Style::Level(*level));
+                buffer.append(0, code, Style::Level(*level));
+                buffer.append(0, "]", Style::Level(*level));
             }
             buffer.append(0, ": ", Style::HeaderMsg);
-            for &(ref text, _) in msg.iter() {
+            for (text, _) in msg.iter() {
                 buffer.append(0, text, Style::HeaderMsg);
             }
         }
@@ -740,8 +742,10 @@ impl<'a> Emitter<'a> {
         let mut annotated_files = Emitter::preprocess_annotations(self.cm, spans);
 
         // Make sure our primary file comes first
-        let primary_lo = if let (Some(ref cm), Some(ref primary_span)) =
-            (self.cm.as_ref(), spans.iter().find(|x| x.style == SpanStyle::Primary)) {
+        let primary_lo = if let (Some(cm), Some(primary_span)) = (
+            self.cm.as_ref(),
+            spans.iter().find(|x| x.style == SpanStyle::Primary),
+        ) {
             cm.look_up_pos(primary_span.span.low())
         } else {
             // If we don't have span information, emit and exit
@@ -749,7 +753,8 @@ impl<'a> Emitter<'a> {
             return Ok(());
         };
         if let Ok(pos) =
-            annotated_files.binary_search_by(|x| x.file.name().cmp(&primary_lo.file.name())) {
+            annotated_files.binary_search_by(|x| x.file.name().cmp(primary_lo.file.name()))
+        {
             annotated_files.swap(0, pos);
         }
 
@@ -764,9 +769,16 @@ impl<'a> Emitter<'a> {
 
                 buffer.prepend(buffer_msg_line_offset, "--> ", Style::LineNumber);
                 let loc = primary_lo.clone();
-                buffer.append(buffer_msg_line_offset,
-                              &format!("{}:{}:{}", loc.file.name(), loc.position.line + 1, loc.position.column + 1),
-                              Style::LineAndColumn);
+                buffer.append(
+                    buffer_msg_line_offset,
+                    &format!(
+                        "{}:{}:{}",
+                        loc.file.name(),
+                        loc.position.line + 1,
+                        loc.position.column + 1
+                    ),
+                    Style::LineAndColumn,
+                );
                 for _ in 0..max_line_num_len {
                     buffer.prepend(buffer_msg_line_offset, " ", Style::NoStyle);
                 }
@@ -779,9 +791,11 @@ impl<'a> Emitter<'a> {
 
                 // Then, the secondary file indicator
                 buffer.prepend(buffer_msg_line_offset + 1, "::: ", Style::LineNumber);
-                buffer.append(buffer_msg_line_offset + 1,
-                              annotated_file.file.name(),
-                              Style::LineAndColumn);
+                buffer.append(
+                    buffer_msg_line_offset + 1,
+                    annotated_file.file.name(),
+                    Style::LineAndColumn,
+                );
                 for _ in 0..max_line_num_len {
                     buffer.prepend(buffer_msg_line_offset + 1, " ", Style::NoStyle);
                 }
@@ -805,11 +819,13 @@ impl<'a> Emitter<'a> {
                     width_offset + annotated_file.multiline_depth + 1
                 };
 
-                let depths = self.render_source_line(&mut buffer,
-                                                     &annotated_file.file,
-                                                     &annotated_file.lines[line_idx],
-                                                     width_offset,
-                                                     code_offset);
+                let depths = self.render_source_line(
+                    &mut buffer,
+                    &annotated_file.file,
+                    &annotated_file.lines[line_idx],
+                    width_offset,
+                    code_offset,
+                );
 
                 let mut to_add = HashMap::new();
 
@@ -825,53 +841,57 @@ impl<'a> Emitter<'a> {
                 // the code in this line.
                 for (depth, style) in &multilines {
                     for line in previous_buffer_line..buffer.num_lines() {
-                        draw_multiline_line(&mut buffer,
-                                            line,
-                                            width_offset,
-                                            *depth,
-                                            *style);
+                        draw_multiline_line(&mut buffer, line, width_offset, *depth, *style);
                     }
                 }
                 // check to see if we need to print out or elide lines that come between
                 // this annotated line and the next one.
                 if line_idx < (annotated_file.lines.len() - 1) {
-                    let line_idx_delta = annotated_file.lines[line_idx + 1].line_index -
-                                         annotated_file.lines[line_idx].line_index;
+                    let line_idx_delta = annotated_file.lines[line_idx + 1].line_index
+                        - annotated_file.lines[line_idx].line_index;
                     if line_idx_delta > 2 {
                         let last_buffer_line_num = buffer.num_lines();
                         buffer.puts(last_buffer_line_num, 0, "...", Style::LineNumber);
 
                         // Set the multiline annotation vertical lines on `...` bridging line.
                         for (depth, style) in &multilines {
-                            draw_multiline_line(&mut buffer,
-                                                last_buffer_line_num,
-                                                width_offset,
-                                                *depth,
-                                                *style);
+                            draw_multiline_line(
+                                &mut buffer,
+                                last_buffer_line_num,
+                                width_offset,
+                                *depth,
+                                *style,
+                            );
                         }
                     } else if line_idx_delta == 2 {
-                        let unannotated_line = annotated_file.file
+                        let unannotated_line = annotated_file
+                            .file
                             .source_line(annotated_file.lines[line_idx].line_index);
 
                         let last_buffer_line_num = buffer.num_lines();
 
-                        buffer.puts(last_buffer_line_num,
-                                    0,
-                                    &(annotated_file.lines[line_idx + 1].line_index - 1)
-                                        .to_string(),
-                                    Style::LineNumber);
+                        buffer.puts(
+                            last_buffer_line_num,
+                            0,
+                            &(annotated_file.lines[line_idx + 1].line_index - 1).to_string(),
+                            Style::LineNumber,
+                        );
                         draw_col_separator(&mut buffer, last_buffer_line_num, 1 + max_line_num_len);
-                        buffer.puts(last_buffer_line_num,
-                                    code_offset,
-                                    &unannotated_line,
-                                    Style::Quotation);
+                        buffer.puts(
+                            last_buffer_line_num,
+                            code_offset,
+                            unannotated_line,
+                            Style::Quotation,
+                        );
 
                         for (depth, style) in &multilines {
-                            draw_multiline_line(&mut buffer,
-                                                last_buffer_line_num,
-                                                width_offset,
-                                                *depth,
-                                                *style);
+                            draw_multiline_line(
+                                &mut buffer,
+                                last_buffer_line_num,
+                                width_offset,
+                                *depth,
+                                *style,
+                            );
                         }
                     }
                 }
@@ -895,25 +915,30 @@ impl<'a> Emitter<'a> {
         let max_line_num_len = max_line_num.to_string().len();
 
         for msg in msgs {
-            match self.emit_message_default(&msg.spans[..], &vec![(msg.message.clone(), Style::NoStyle)], &msg.code, &msg.level, max_line_num_len, false) {
+            match self.emit_message_default(
+                &msg.spans[..],
+                &[(msg.message.clone(), Style::NoStyle)],
+                &msg.code,
+                &msg.level,
+                max_line_num_len,
+                false,
+            ) {
                 Ok(()) => (),
-                Err(e) => panic!("failed to emit error: {}", e)
+                Err(e) => panic!("failed to emit error: {}", e),
             }
         }
 
         let mut dst = self.dst.writable();
-        match write!(dst, "\n") {
+        match writeln!(dst) {
             Err(e) => panic!("failed to emit error: {}", e),
             _ => {
-                match dst.flush() {
-                    Err(e) => panic!("failed to emit error: {}", e),
-                    _ => (),
+                if let Err(e) = dst.flush() {
+                    panic!("failed to emit error: {}", e)
                 }
             }
         }
     }
 }
-
 
 fn draw_col_separator(buffer: &mut StyledBuffer, line: usize, col: usize) {
     buffer.puts(line, col, "| ", Style::LineNumber);
@@ -923,15 +948,23 @@ fn draw_col_separator_no_space(buffer: &mut StyledBuffer, line: usize, col: usiz
     draw_col_separator_no_space_with_style(buffer, line, col, Style::LineNumber);
 }
 
-fn draw_col_separator_no_space_with_style(buffer: &mut StyledBuffer,
-                                          line: usize,
-                                          col: usize,
-                                          style: Style) {
+fn draw_col_separator_no_space_with_style(
+    buffer: &mut StyledBuffer,
+    line: usize,
+    col: usize,
+    style: Style,
+) {
     buffer.putc(line, col, '|', style);
 }
 
-fn draw_range(buffer: &mut StyledBuffer, symbol: char, line: usize,
-              col_from: usize, col_to: usize, style: Style) {
+fn draw_range(
+    buffer: &mut StyledBuffer,
+    symbol: char,
+    line: usize,
+    col_from: usize,
+    col_to: usize,
+    style: Style,
+) {
     for col in col_from..col_to {
         buffer.putc(line, col, symbol, style);
     }
@@ -941,33 +974,43 @@ fn draw_note_separator(buffer: &mut StyledBuffer, line: usize, col: usize) {
     buffer.puts(line, col, "= ", Style::LineNumber);
 }
 
-fn draw_multiline_line(buffer: &mut StyledBuffer,
-                       line: usize,
-                       offset: usize,
-                       depth: usize,
-                       style: Style)
-{
+fn draw_multiline_line(
+    buffer: &mut StyledBuffer,
+    line: usize,
+    offset: usize,
+    depth: usize,
+    style: Style,
+) {
     buffer.putc(line, offset + depth - 1, '|', style);
 }
 
-fn num_overlap(a_start: usize, a_end: usize, b_start: usize, b_end:usize, inclusive: bool) -> bool {
-    let extra = if inclusive {
-        1
-    } else {
-        0
-    };
+fn num_overlap(
+    a_start: usize,
+    a_end: usize,
+    b_start: usize,
+    b_end: usize,
+    inclusive: bool,
+) -> bool {
+    let extra = if inclusive { 1 } else { 0 };
 
     (a_start >= b_start && a_start < b_end + extra)
-    || (b_start >= a_start && b_start < a_end + extra)
+        || (b_start >= a_start && b_start < a_end + extra)
 }
 fn overlaps(a1: &Annotation, a2: &Annotation, padding: usize) -> bool {
-    num_overlap(a1.start_col, a1.end_col + padding, a2.start_col, a2.end_col, false)
+    num_overlap(
+        a1.start_col,
+        a1.end_col + padding,
+        a2.start_col,
+        a2.end_col,
+        false,
+    )
 }
 
-fn emit_to_destination(rendered_buffer: &Vec<Vec<StyledString>>,
-                       lvl: &Level,
-                       dst: &mut Destination)
-                       -> io::Result<()> {
+fn emit_to_destination(
+    rendered_buffer: &Vec<Vec<StyledString>>,
+    lvl: &Level,
+    dst: &mut Destination,
+) -> io::Result<()> {
     use lock;
 
     let mut dst = dst.writable();
@@ -987,11 +1030,11 @@ fn emit_to_destination(rendered_buffer: &Vec<Vec<StyledString>>,
     let _buffer_lock = lock::acquire_global_lock("rustc_errors");
     for line in rendered_buffer {
         for part in line {
-            dst.apply_style(lvl.clone(), part.style)?;
+            dst.apply_style(*lvl, part.style)?;
             write!(dst, "{}", part.text)?;
             dst.reset()?;
         }
-        write!(dst, "\n")?;
+        writeln!(dst)?;
     }
     dst.flush()?;
     Ok(())
@@ -1001,7 +1044,7 @@ fn emit_to_destination(rendered_buffer: &Vec<Vec<StyledString>>,
 enum Destination<'a> {
     Terminal(StandardStream),
     Buffered(BufferWriter),
-    Raw(Box<Write + Send + 'a>),
+    Raw(Box<dyn Write + Send + 'a>),
 }
 
 use self::Destination::*;
@@ -1009,12 +1052,12 @@ use self::Destination::*;
 enum WritableDst<'a, 'b> {
     Terminal(&'b mut StandardStream),
     Buffered(&'b mut BufferWriter, Buffer),
-    Raw(&'b mut Box<Write + Send + 'a>),
+    Raw(&'b mut Box<dyn Write + Send + 'a>),
 }
 
 impl<'a> Destination<'a> {
     fn from_stderr(color: ColorConfig) -> Destination<'a> {
-        let choice = color.to_color_choice();
+        let choice = color.get_color_choice();
         // On Windows we'll be performing global synchronization on the entire
         // system for emitting rustc errors, so there's no need to buffer
         // anything.
@@ -1058,18 +1101,15 @@ impl<'a, 'b> WritableDst<'a, 'b> {
             Style::HeaderMsg => {
                 spec.set_bold(true);
                 if cfg!(windows) {
-                    spec.set_intense(true)
-                        .set_fg(Some(Color::White));
+                    spec.set_intense(true).set_fg(Some(Color::White));
                 }
             }
             Style::UnderlinePrimary | Style::LabelPrimary => {
                 spec = lvl.color();
                 spec.set_bold(true);
             }
-            Style::UnderlineSecondary |
-            Style::LabelSecondary => {
-                spec.set_bold(true)
-                    .set_intense(true);
+            Style::UnderlineSecondary | Style::LabelSecondary => {
+                spec.set_bold(true).set_intense(true);
                 if cfg!(windows) {
                     spec.set_fg(Some(Color::Cyan));
                 } else {
@@ -1092,7 +1132,7 @@ impl<'a, 'b> WritableDst<'a, 'b> {
         match *self {
             WritableDst::Terminal(ref mut t) => t.set_color(color),
             WritableDst::Buffered(_, ref mut t) => t.set_color(color),
-            WritableDst::Raw(_) => Ok(())
+            WritableDst::Raw(_) => Ok(()),
         }
     }
 
@@ -1125,11 +1165,8 @@ impl<'a, 'b> Write for WritableDst<'a, 'b> {
 
 impl<'a, 'b> Drop for WritableDst<'a, 'b> {
     fn drop(&mut self) {
-        match *self {
-            WritableDst::Buffered(ref mut dst, ref mut buf) => {
-                drop(dst.print(buf));
-            }
-            _ => {}
+        if let WritableDst::Buffered(ref mut dst, ref mut buf) = *self {
+            drop(dst.print(buf));
         }
     }
 }
