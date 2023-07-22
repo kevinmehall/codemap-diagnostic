@@ -1,6 +1,6 @@
 [package]
 name = "codemap-diagnostic"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Kevin Mehall <km@kevinmehall.net>", "The Rust Project Developers"]
 license = "MIT/Apache-2.0"
 repository = "https://github.com/kevinmehall/codemap-diagnostic"
@@ -11,6 +11,7 @@ description = """
 readme = "README.md"
 keywords = ["compiler", "error", "warning", "format", "rustc"]
 categories = ["command-line-interface"]
+rust-version = "1.70"
 
 [dependencies]
 codemap = { version = "0.1.0" }
